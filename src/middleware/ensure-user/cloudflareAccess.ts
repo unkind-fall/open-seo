@@ -3,7 +3,10 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { AppError } from "@/server/lib/errors";
 import { validateTeamDomain } from "@/shared/selfhost-checks";
 import { classifyAccessVerificationError } from "./accessTokenErrors";
-import { resolveSharedWorkspaceContext } from "./delegated";
+import {
+  resolveServiceIdentityContext,
+  resolveSharedWorkspaceContext,
+} from "./delegated";
 import type { EnsuredUserContext } from "./types";
 
 const jwksByTeamDomain = new Map<
@@ -24,6 +27,27 @@ function getJwks(teamDomain: string) {
   jwksByTeamDomain.set(teamDomain, jwks);
 
   return jwks;
+}
+
+// Service tokens carry no email, only `common_name` (the token's client id).
+// ACCESS_SERVICE_IDENTITIES maps client ids to the email the token acts as;
+// anything malformed is treated as "no match" so the request is refused.
+function lookupServiceIdentityEmail(commonName: string): string | null {
+  let identities: unknown;
+  try {
+    identities = JSON.parse(env.ACCESS_SERVICE_IDENTITIES ?? "");
+  } catch {
+    return null;
+  }
+  if (
+    !identities ||
+    typeof identities !== "object" ||
+    !Object.hasOwn(identities, commonName)
+  ) {
+    return null;
+  }
+  const email: unknown = Reflect.get(identities, commonName);
+  return typeof email === "string" && email ? email : null;
 }
 
 function getValidatedTeamDomain(teamDomain: string) {
@@ -90,9 +114,18 @@ export async function resolveCloudflareAccessContext(
   const userId = typeof payload.sub === "string" ? payload.sub : null;
   const userEmail = typeof payload.email === "string" ? payload.email : null;
 
-  if (!userId || !userEmail) {
+  if (userId && userEmail) {
+    return resolveSharedWorkspaceContext(userId, userEmail);
+  }
+
+  const commonName =
+    typeof payload.common_name === "string" ? payload.common_name : null;
+  const serviceEmail =
+    !userEmail && commonName ? lookupServiceIdentityEmail(commonName) : null;
+
+  if (!commonName || !serviceEmail) {
     throw new AppError("UNAUTHENTICATED");
   }
 
-  return resolveSharedWorkspaceContext(userId, userEmail);
+  return resolveServiceIdentityContext(commonName, serviceEmail);
 }
