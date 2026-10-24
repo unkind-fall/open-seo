@@ -1,6 +1,7 @@
 import type { CreateMcpHandlerOptions } from "agents/mcp/server";
 import { McpServer } from "@modelcontextprotocol/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "@/server/lib/errors";
 import {
   createWorkersOAuthMcpProps,
   MCP_AUTH_CONTEXT_PROP,
@@ -199,6 +200,30 @@ describe("handleSelfHostedOpenSeoMcpRequest", () => {
       },
     });
   });
+
+  it.each(["UNAUTHENTICATED", "AUTH_CONFIG_MISSING"] as const)(
+    "answers a %s Access failure with a JSON 401 instead of throwing",
+    async (code) => {
+      selfHostedAuthMocks.resolveCloudflareAccessContext.mockRejectedValue(
+        new AppError(code),
+      );
+
+      const response = await handleSelfHostedOpenSeoMcpRequest(
+        createMcpRequest(),
+        "cloudflare_access",
+        {},
+        ctx,
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("content-type")).toContain(
+        "application/json",
+      );
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(await response.json()).toMatchObject({ error: "unauthorized" });
+      expect(selfHostedAuthMocks.createOpenSeoMcpServer).not.toHaveBeenCalled();
+    },
+  );
 
   it("answers OPTIONS preflight without resolving an auth context", async () => {
     const response = await handleSelfHostedOpenSeoMcpRequest(

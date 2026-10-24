@@ -98,6 +98,25 @@ export async function resolveSharedWorkspaceContext(
   };
 }
 
+// Cloudflare Access service tokens act as the email mapped to them in
+// ACCESS_SERVICE_IDENTITIES. user.email is unique, so when that email already
+// belongs to a (browser-login) user the token reuses that user's id; only an
+// unknown email gets its own `svc:<client id>` user.
+export async function resolveServiceIdentityContext(
+  commonName: string,
+  userEmail: string,
+): Promise<EnsuredUserContext> {
+  const existing = await db.query.user.findFirst({
+    columns: { id: true },
+    where: eq(user.email, userEmail),
+  });
+
+  return resolveSharedWorkspaceContext(
+    existing?.id ?? `svc:${commonName}`,
+    userEmail,
+  );
+}
+
 export async function resolveLocalNoAuthContext(): Promise<EnsuredUserContext> {
   return resolveDelegatedContext(LOCAL_ADMIN_USER_ID, LOCAL_ADMIN_EMAIL);
 }

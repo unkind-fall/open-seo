@@ -60,6 +60,8 @@ This provisions the D1 database, KV namespaces, and R2 bucket, applies the datab
 
 To manage the Access application yourself instead, set `TEAM_DOMAIN` (`https://your-team.cloudflareaccess.com`) and `POLICY_AUD` (the application's audience tag) in `.env.selfhost` — the deploy then provisions no Access resources.
 
+To let a Cloudflare Access service token call OpenSEO (for example, an MCP client hitting `/mcp`), set `ACCESS_SERVICE_IDENTITIES` to a JSON map from the token's client ID to the email it acts as, e.g. `{"abc123.access":"you@example.com"}`. If that email already belongs to a user, the token acts as that user; otherwise it gets its own user. Service tokens not listed are rejected with 401.
+
 ## 5) Validate setup
 
 1. Open the Worker URL printed at the end of the deploy.

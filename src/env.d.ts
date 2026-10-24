@@ -25,6 +25,9 @@ declare namespace Cloudflare {
     BYPASS_EMAIL_VERIFICATION?: string;
     TEAM_DOMAIN?: string;
     POLICY_AUD?: string;
+    // JSON map of Cloudflare Access service-token client id -> email the
+    // token acts as, e.g. {"abc.access":"someone@example.com"}.
+    ACCESS_SERVICE_IDENTITIES?: string;
     POSTHOG_PUBLIC_KEY?: string;
     POSTHOG_HOST?: string;
     BETTER_AUTH_SECRET?: string;

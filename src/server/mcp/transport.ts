@@ -19,6 +19,7 @@ import {
   type McpProps,
 } from "@/server/mcp/context";
 import { getPublicOrigin } from "@/server/mcp/public-origin";
+import { asAppError } from "@/server/lib/errors";
 import { createOpenSeoMcpServer } from "@/server/mcp/server";
 import { AuthRepository } from "@/server/auth/repositories/AuthRepository";
 import { resolveExistingActiveHostedOrganization } from "@/server/auth/default-hosted-organization";
@@ -242,10 +243,36 @@ export async function handleSelfHostedOpenSeoMcpRequest(
     return new Response(null, { headers: MCP_CORS_HEADERS });
   }
 
-  const identity =
-    authMode === "local_noauth"
-      ? await resolveLocalNoAuthContext()
-      : await resolveCloudflareAccessContext(request.headers);
+  let identity;
+  try {
+    identity =
+      authMode === "local_noauth"
+        ? await resolveLocalNoAuthContext()
+        : await resolveCloudflareAccessContext(request.headers);
+  } catch (error) {
+    // An uncaught throw here crashes the Worker (Cloudflare error 1101); MCP
+    // clients need a JSON 401 they can act on instead.
+    const appError = asAppError(error);
+    if (
+      appError?.code === "UNAUTHENTICATED" ||
+      appError?.code === "AUTH_CONFIG_MISSING"
+    ) {
+      // AUTH_CONFIG_MISSING messages are static operator guidance (see
+      // CLIENT_DETAIL_ERROR_CODES) and never carry the token.
+      const message =
+        appError.code === "AUTH_CONFIG_MISSING"
+          ? appError.message
+          : "Authentication required.";
+      return withMcpCors(
+        Response.json({ error: "unauthorized", message }, { status: 401 }),
+      );
+    }
+    console.error("Self-hosted MCP identity resolution failed:", error);
+    return withMcpCors(
+      Response.json({ error: "internal_error" }, { status: 500 }),
+    );
+  }
+
   const props = createWorkersOAuthMcpProps({
     userId: identity.userId,
     userEmail: identity.userEmail,
